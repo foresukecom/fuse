@@ -1,0 +1,28 @@
+{
+  "name": "Chrome Extension Dev Container",
+  "dockerComposeFile": "compose.yml",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "cweijan.dbclient-jdbc",
+        "cweijan.vscode-mysql-client2",
+        "donjayamanne.githistory",
+        "eamodio.gitlens", 
+        "github.vscode-pull-request-github", 
+        "golang.go", 
+        "mhutchie.git-graph", 
+        "ms-ceintl.vscode-language-pack-ja", 
+        "seatonjiang.gitmoji-vscode", 
+        "tamasfe.even-better-toml",
+        "streetsidesoftware.code-spell-checker", 
+        "vue.volar",
+        "google.geminicodeassist",
+        "marp-team.marp-vscode",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+  "service": "chrome-extension-dev",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
+}
