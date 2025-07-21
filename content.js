@@ -1,6 +1,5 @@
 let timerActive = false;
 let timerElement = null;
-let timerInterval = null;
 let timerData = null;
 let currentTheme = 'bomb'; // デフォルトテーマ
 
@@ -181,40 +180,48 @@ function startTimer(data) {
     
     timerElement.style.display = 'block';
     updateTimerDisplay();
+}
+
+function syncTimer(state) {
+    console.log('Syncing timer with state:', state);
     
-    timerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - timerData.startTime) / 1000);
-        const remaining = Math.max(0, timerData.totalSeconds - elapsed);
-        
-        if (remaining <= 0) {
-            timerComplete();
+    if (state.isRunning) {
+        // 必須フィールドをチェック
+        if (!state.totalSeconds || !state.startTime) {
+            console.log('Invalid timer state received, ignoring');
             return;
         }
         
-        timerData.remainingSeconds = remaining;
-        updateTimerDisplay();
+        // remainingSecondsがない場合は計算
+        if (state.remainingSeconds === null || state.remainingSeconds === undefined) {
+            const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+            state.remainingSeconds = Math.max(0, state.totalSeconds - elapsed);
+            console.log('Calculated remainingSeconds:', state.remainingSeconds);
+        }
         
-        // タイマー状態をストレージに定期保存（ページ遷移対応）
-        try {
-            chrome.storage.sync.set({timerState: {
-                totalSeconds: timerData.totalSeconds,
-                remainingSeconds: remaining,
-                isRunning: true,
-                startTime: timerData.startTime
-            }});
-        } catch (error) {
-            if (error.message.includes('Extension context invalidated')) {
-                console.log('Extension context invalidated, stopping timer');
-                stopTimer();
-                return;
+        timerData = state;
+        if (state.theme) {
+            currentTheme = state.theme;
+        }
+        
+        if (!timerActive) {
+            timerActive = true;
+            if (!timerElement) {
+                timerElement = createTimerElement();
+                document.body.appendChild(timerElement);
             }
+            timerElement.style.display = 'block';
         }
         
-        if (remaining <= 10) {
-            timerElement.style.background = 'linear-gradient(45deg, #ff4757, #ff3838)';
-            timerElement.style.animation = 'pulse 1s infinite';
+        // 完了状態の場合
+        if (state.remainingSeconds <= 0) {
+            timerComplete();
+        } else {
+            updateTimerDisplay();
         }
-    }, 1000);
+    } else {
+        stopTimer();
+    }
 }
 
 function updateTimerDisplay() {
@@ -267,21 +274,8 @@ function updateTimerDisplay() {
 function stopTimer() {
     timerActive = false;
     
-    if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
-    }
-    
     if (timerElement) {
         timerElement.style.display = 'none';
-    }
-    
-    try {
-        chrome.storage.sync.set({timerState: {isRunning: false}});
-    } catch (error) {
-        if (error.message.includes('Extension context invalidated')) {
-            console.log('Extension context invalidated during timer stop');
-        }
     }
 }
 
@@ -395,6 +389,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         sendResponse({success: true});
     }
     
+    if (request.action === 'syncTimer') {
+        console.log('Syncing timer with state:', request.timerState);
+        syncTimer(request.timerState);
+        sendResponse({success: true});
+    }
+    
     if (request.action === 'changeTheme') {
         console.log('Changing theme to:', request.theme);
         changeTheme(request.theme);
@@ -415,27 +415,10 @@ try {
             currentTheme = result.selectedTheme;
         }
         
-        if (result.timerState && result.timerState.isRunning) {
-            const elapsed = Math.floor((Date.now() - result.timerState.startTime) / 1000);
-            const remaining = Math.max(0, result.timerState.totalSeconds - elapsed);
-            
-            // タイマーにテーマ情報があれば使用
-            if (result.timerState.theme) {
-                currentTheme = result.timerState.theme;
-            }
-            
-            if (remaining > 0) {
-                result.timerState.remainingSeconds = remaining;
-                startTimer(result.timerState);
-                console.log('Resumed existing timer with', remaining, 'seconds remaining');
-            } else {
-                try {
-                    chrome.storage.sync.set({timerState: {isRunning: false}});
-                    console.log('Existing timer had expired, cleared state');
-                } catch (error) {
-                    console.log('Error clearing expired timer state:', error.message);
-                }
-            }
+        if (result.timerState) {
+            // syncTimerを使用してタイマー状態を同期
+            syncTimer(result.timerState);
+            console.log('Synchronized timer state on page load');
         }
     });
 } catch (error) {

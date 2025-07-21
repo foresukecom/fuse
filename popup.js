@@ -45,8 +45,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const [hours, minutes, seconds] = timeValue.split(':').map(num => parseInt(num) || 0);
+        console.log('Time input value:', timeValue);
+        const timeParts = timeValue.split(':');
+        const hours = parseInt(timeParts[0]) || 0;
+        const minutes = parseInt(timeParts[1]) || 0;
+        const seconds = parseInt(timeParts[2]) || 0; // step="1"がある場合のみ存在
         const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
+        
+        console.log('Parsed time:', {hours, minutes, seconds, totalSeconds});
         
         if (totalSeconds <= 0) {
             status.textContent = '時間を正しく設定してください';
@@ -61,32 +67,32 @@ document.addEventListener('DOMContentLoaded', function() {
             theme: themeSelect.value
         };
 
-        const timeText = hours > 0 ? 
-            `${hours}時間${minutes}分${seconds}秒` : 
-            minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+        let timeText = '';
+        if (hours > 0) {
+            timeText = `${hours}時間${minutes}分`;
+            if (seconds > 0) timeText += `${seconds}秒`;
+        } else if (minutes > 0) {
+            timeText = `${minutes}分`;
+            if (seconds > 0) timeText += `${seconds}秒`;
+        } else {
+            timeText = `${seconds}秒`;
+        }
 
         chrome.storage.sync.set({timerState: timerData}, function() {
             startButton.disabled = true;
             stopButton.disabled = false;
             status.textContent = `タイマー開始: ${timeText}`;
             
-            console.log('Sending timer start message with data:', timerData);
+            console.log('Starting global timer with data:', timerData);
             
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                if (tabs[0]) {
-                    console.log('Sending message to tab:', tabs[0].id);
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        action: 'startTimer',
-                        timerData: timerData
-                    }).then(response => {
-                        console.log('Timer start message sent successfully:', response);
-                    }).catch(error => {
-                        console.log('タイマー開始メッセージの送信に失敗:', error);
-                        status.textContent = 'タイマー開始（ページを更新してください）';
-                    });
-                } else {
-                    console.log('No active tab found');
-                }
+            // バックグラウンドスクリプトでグローバルタイマーを開始
+            chrome.runtime.sendMessage({
+                action: 'startGlobalTimer',
+                timerData: timerData
+            }).then(response => {
+                console.log('Global timer started successfully:', response);
+            }).catch(error => {
+                console.log('グローバルタイマー開始エラー:', error);
             });
         });
     });
@@ -97,14 +103,13 @@ document.addEventListener('DOMContentLoaded', function() {
             stopButton.disabled = true;
             status.textContent = 'タイマーを停止しました';
             
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                if (tabs[0]) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        action: 'stopTimer'
-                    }).catch(error => {
-                        console.log('タイマー停止メッセージの送信に失敗:', error);
-                    });
-                }
+            // バックグラウンドスクリプトでグローバルタイマーを停止
+            chrome.runtime.sendMessage({
+                action: 'stopGlobalTimer'
+            }).then(response => {
+                console.log('Global timer stopped successfully:', response);
+            }).catch(error => {
+                console.log('グローバルタイマー停止エラー:', error);
             });
         });
     });
