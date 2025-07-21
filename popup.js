@@ -1,10 +1,16 @@
 document.addEventListener('DOMContentLoaded', function() {
+    const themeSelect = document.getElementById('themeSelect');
     const timeInput = document.getElementById('timeInput');
     const startButton = document.getElementById('startTimer');
     const stopButton = document.getElementById('stopTimer');
     const status = document.getElementById('status');
 
-    chrome.storage.sync.get(['timerState'], function(result) {
+    // 保存されたテーマを読み込み
+    chrome.storage.sync.get(['selectedTheme', 'timerState'], function(result) {
+        if (result.selectedTheme) {
+            themeSelect.value = result.selectedTheme;
+        }
+        
         if (result.timerState && result.timerState.isRunning) {
             startButton.disabled = true;
             stopButton.disabled = false;
@@ -12,6 +18,24 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             chrome.storage.sync.set({timerState: {isRunning: false}});
         }
+    });
+
+    // テーマ変更時の処理
+    themeSelect.addEventListener('change', function() {
+        const selectedTheme = themeSelect.value;
+        chrome.storage.sync.set({selectedTheme: selectedTheme}, function() {
+            // アクティブなタブにテーマ変更を通知
+            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'changeTheme',
+                        theme: selectedTheme
+                    }).catch(error => {
+                        console.log('テーマ変更メッセージ送信エラー:', error);
+                    });
+                }
+            });
+        });
     });
 
     startButton.addEventListener('click', function() {
@@ -33,7 +57,8 @@ document.addEventListener('DOMContentLoaded', function() {
             totalSeconds: totalSeconds,
             remainingSeconds: totalSeconds,
             isRunning: true,
-            startTime: Date.now()
+            startTime: Date.now(),
+            theme: themeSelect.value
         };
 
         const timeText = hours > 0 ? 

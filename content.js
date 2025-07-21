@@ -2,8 +2,41 @@ let timerActive = false;
 let timerElement = null;
 let timerInterval = null;
 let timerData = null;
+let currentTheme = 'bomb'; // デフォルトテーマ
+
+// アイコンテーマ定義
+const iconThemes = {
+    bomb: {
+        name: '爆弾',
+        moving: '🔥',
+        target: '💣',
+        lineColor: '#8B4513',
+        burnedColor: 'linear-gradient(to right, #2c2c2c, #444444)',
+        completeIcon: '💥',
+        completeMessage: '💥 時間です！'
+    },
+    dog: {
+        name: '犬と家',
+        moving: '🐕',
+        target: '🏠',
+        lineColor: '#90EE90',
+        burnedColor: 'linear-gradient(to right, #228B22, #32CD32)',
+        completeIcon: '❤️',
+        completeMessage: '🏠 おかえり！'
+    },
+    ship: {
+        name: '船と島',
+        moving: '⛵',
+        target: '🏝️',
+        lineColor: '#4169E1',
+        burnedColor: 'linear-gradient(to right, #1E90FF, #87CEEB)',
+        completeIcon: '⚓',
+        completeMessage: '🏝️ 到着しました！'
+    }
+};
 
 function createTimerElement() {
+    const theme = iconThemes[currentTheme];
     const container = document.createElement('div');
     container.id = 'fuse-timer-container';
     container.style.cssText = `
@@ -25,7 +58,7 @@ function createTimerElement() {
         left: 20px;
         right: 160px;
         height: 4px;
-        background: #8B4513;
+        background: ${theme.lineColor};
         border-radius: 2px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     `;
@@ -39,17 +72,17 @@ function createTimerElement() {
         left: 20px;
         width: 0px;
         height: 4px;
-        background: linear-gradient(to right, #2c2c2c, #444444);
+        background: ${theme.burnedColor};
         border-radius: 2px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         transition: width 0.1s linear;
     `;
     
-    // 火のアイコン
-    const fireIcon = document.createElement('div');
-    fireIcon.id = 'fire-icon';
-    fireIcon.textContent = '🔥';
-    fireIcon.style.cssText = `
+    // 移動アイコン
+    const movingIcon = document.createElement('div');
+    movingIcon.id = 'moving-icon';
+    movingIcon.textContent = theme.moving;
+    movingIcon.style.cssText = `
         position: absolute;
         bottom: 32px;
         left: 5px;
@@ -75,11 +108,11 @@ function createTimerElement() {
         pointer-events: auto;
     `;
     
-    // 爆弾アイコン（タイマーの左側）
-    const bombIcon = document.createElement('div');
-    bombIcon.id = 'bomb-icon';
-    bombIcon.textContent = '💣';
-    bombIcon.style.cssText = `
+    // ターゲットアイコン（タイマーの左側）
+    const targetIcon = document.createElement('div');
+    targetIcon.id = 'target-icon';
+    targetIcon.textContent = theme.target;
+    targetIcon.style.cssText = `
         position: absolute;
         bottom: 28px;
         right: 120px;
@@ -114,8 +147,8 @@ function createTimerElement() {
     
     container.appendChild(fuseLine);
     container.appendChild(burnedLine);
-    container.appendChild(fireIcon);
-    container.appendChild(bombIcon);
+    container.appendChild(movingIcon);
+    container.appendChild(targetIcon);
     container.appendChild(timerDisplay);
     
     return container;
@@ -188,8 +221,8 @@ function updateTimerDisplay() {
     if (timerElement && timerData) {
         const timeText = formatTime(timerData.remainingSeconds);
         const timerDisplay = timerElement.querySelector('#timer-display');
-        const fireIcon = timerElement.querySelector('#fire-icon');
-        const bombIcon = timerElement.querySelector('#bomb-icon');
+        const movingIcon = timerElement.querySelector('#moving-icon');
+        const targetIcon = timerElement.querySelector('#target-icon');
         
         if (timerDisplay) {
             timerDisplay.innerHTML = `
@@ -201,32 +234,32 @@ function updateTimerDisplay() {
             closeButton.addEventListener('click', stopTimer);
         }
         
-        // 火のアイコンの位置を更新（左から右へ移動）
-        if (fireIcon && timerData.totalSeconds > 0) {
+        // 移動アイコンの位置を更新（左から右へ移動）
+        if (movingIcon && timerData.totalSeconds > 0) {
             const progress = 1 - (timerData.remainingSeconds / timerData.totalSeconds);
             const containerWidth = window.innerWidth;
-            const fireStartPos = 5;
-            const fireEndPos = containerWidth - 180; // 爆弾の位置より少し左
-            const currentPos = fireStartPos + (progress * (fireEndPos - fireStartPos));
+            const startPos = 5;
+            const endPos = containerWidth - 180;
+            const currentPos = startPos + (progress * (endPos - startPos));
             
-            fireIcon.style.left = currentPos + 'px';
+            movingIcon.style.left = currentPos + 'px';
             
             // 燃えた部分の導火線を更新
             const burnedLine = timerElement.querySelector('#burned-line');
             if (burnedLine) {
-                const burnedWidth = currentPos - 15; // 火の位置まで
+                const burnedWidth = currentPos - 15;
                 burnedLine.style.width = Math.max(0, burnedWidth) + 'px';
             }
             
-            // 残り時間が少なくなったら火のアニメーションを追加
+            // 残り時間が少なくなったらアニメーションを追加
             if (timerData.remainingSeconds <= 10) {
-                fireIcon.style.animation = 'fire-flicker 0.2s infinite alternate';
+                movingIcon.style.animation = 'icon-flicker 0.2s infinite alternate';
             }
         }
         
-        // 爆弾のアニメーション（残り時間が少なくなったら）
-        if (bombIcon && timerData.remainingSeconds <= 10) {
-            bombIcon.style.animation = 'bomb-shake 0.5s infinite';
+        // ターゲットアイコンのアニメーション（残り時間が少なくなったら）
+        if (targetIcon && timerData.remainingSeconds <= 10) {
+            targetIcon.style.animation = 'target-shake 0.5s infinite';
         }
     }
 }
@@ -254,27 +287,28 @@ function stopTimer() {
 
 function timerComplete() {
     if (timerElement) {
-        const bombIcon = timerElement.querySelector('#bomb-icon');
-        const fireIcon = timerElement.querySelector('#fire-icon');
+        const theme = iconThemes[currentTheme];
+        const targetIcon = timerElement.querySelector('#target-icon');
+        const movingIcon = timerElement.querySelector('#moving-icon');
         const timerDisplay = timerElement.querySelector('#timer-display');
         
-        // 爆発アニメーション
-        if (bombIcon) {
-            bombIcon.textContent = '💥';
-            bombIcon.style.fontSize = '48px';
-            bombIcon.style.animation = 'explosion 1s ease-out';
+        // 完了アニメーション
+        if (targetIcon) {
+            targetIcon.textContent = theme.completeIcon;
+            targetIcon.style.fontSize = '48px';
+            targetIcon.style.animation = 'completion 1s ease-out';
         }
         
-        // 火を非表示
-        if (fireIcon) {
-            fireIcon.style.display = 'none';
+        // 移動アイコンを非表示
+        if (movingIcon) {
+            movingIcon.style.display = 'none';
         }
         
         // タイマー表示を更新
         if (timerDisplay) {
             timerDisplay.innerHTML = `
                 <button style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: white; font-size: 14px; cursor: pointer; padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; opacity: 0.7; pointer-events: auto;">×</button>
-                💥 時間です！
+                ${theme.completeMessage}
             `;
             timerDisplay.style.background = 'rgba(255, 100, 0, 0.9)';
             
@@ -300,7 +334,7 @@ style.textContent = `
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-10px); }
     }
-    @keyframes fire-flicker {
+    @keyframes icon-flicker {
         0% { 
             transform: scale(1) rotate(-2deg);
             filter: drop-shadow(0 0 5px orange);
@@ -310,12 +344,12 @@ style.textContent = `
             filter: drop-shadow(0 0 8px red);
         }
     }
-    @keyframes bomb-shake {
+    @keyframes target-shake {
         0%, 100% { transform: translateX(0); }
         25% { transform: translateX(-2px); }
         75% { transform: translateX(2px); }
     }
-    @keyframes explosion {
+    @keyframes completion {
         0% { 
             transform: scale(1);
             opacity: 1;
@@ -332,11 +366,25 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+function changeTheme(themeName) {
+    currentTheme = themeName;
+    if (timerActive && timerElement) {
+        // 既存のタイマーを再作成
+        const oldElement = timerElement;
+        timerElement = createTimerElement();
+        oldElement.parentNode.replaceChild(timerElement, oldElement);
+        updateTimerDisplay();
+    }
+}
+
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     console.log('Content script received message:', request);
     
     if (request.action === 'startTimer') {
         console.log('Starting timer with data:', request.timerData);
+        if (request.timerData.theme) {
+            currentTheme = request.timerData.theme;
+        }
         startTimer(request.timerData);
         sendResponse({success: true});
     }
@@ -346,19 +394,35 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         stopTimer();
         sendResponse({success: true});
     }
+    
+    if (request.action === 'changeTheme') {
+        console.log('Changing theme to:', request.theme);
+        changeTheme(request.theme);
+        sendResponse({success: true});
+    }
 });
 
-// ページ読み込み時のタイマー復元
+// ページ読み込み時のタイマー復元とテーマ読み込み
 try {
-    chrome.storage.sync.get(['timerState'], function(result) {
+    chrome.storage.sync.get(['timerState', 'selectedTheme'], function(result) {
         if (chrome.runtime.lastError) {
             console.log('Chrome runtime error:', chrome.runtime.lastError.message);
             return;
         }
         
+        // テーマ設定を読み込み
+        if (result.selectedTheme) {
+            currentTheme = result.selectedTheme;
+        }
+        
         if (result.timerState && result.timerState.isRunning) {
             const elapsed = Math.floor((Date.now() - result.timerState.startTime) / 1000);
             const remaining = Math.max(0, result.timerState.totalSeconds - elapsed);
+            
+            // タイマーにテーマ情報があれば使用
+            if (result.timerState.theme) {
+                currentTheme = result.timerState.theme;
+            }
             
             if (remaining > 0) {
                 result.timerState.remainingSeconds = remaining;
