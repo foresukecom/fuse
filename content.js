@@ -3,6 +3,7 @@ let timerElement = null;
 let timerData = null;
 let currentTheme = 'bomb'; // デフォルトテーマ
 let localTimerInterval = null; // ローカルタイマーInterval
+let timerCompleted = false; // 完了処理の重複実行を防ぐフラグ
 
 // SVGファイルを読み込む関数
 async function loadSvgFile(path) {
@@ -228,6 +229,7 @@ async function startTimer(data) {
     
     timerData = data;
     timerActive = true;
+    timerCompleted = false; // 完了フラグをリセット
     
     if (!timerElement) {
         timerElement = await createTimerElement();
@@ -253,7 +255,10 @@ function startLocalTimer() {
             timerData.remainingSeconds = remaining;
             
             if (remaining <= 0) {
-                timerComplete();
+                if (!timerCompleted) {
+                    timerCompleted = true;
+                    timerComplete();
+                }
                 clearInterval(localTimerInterval);
                 localTimerInterval = null;
             } else {
@@ -285,6 +290,11 @@ function syncTimer(state) {
             currentTheme = state.theme;
         }
         
+        // syncTimer呼び出し時に完了フラグをリセット
+        if (state.isRunning && state.remainingSeconds > 0) {
+            timerCompleted = false;
+        }
+        
         if (!timerActive) {
             timerActive = true;
             if (!timerElement) {
@@ -293,7 +303,10 @@ function syncTimer(state) {
                     document.body.appendChild(timerElement);
                     timerElement.style.display = 'block';
                     if (state.remainingSeconds <= 0) {
-                        timerComplete();
+                        if (!timerCompleted) {
+                            timerCompleted = true;
+                            timerComplete();
+                        }
                     } else {
                         updateTimerDisplay();
                         startLocalTimer(); // ローカルタイマーを開始
@@ -307,12 +320,27 @@ function syncTimer(state) {
         
         // 完了状態の場合
         if (state.remainingSeconds <= 0) {
-            timerComplete();
+            if (!timerCompleted) {
+                timerCompleted = true;
+                timerComplete();
+            }
         } else {
             updateTimerDisplay();
         }
     } else {
-        stopTimer();
+        // タイマーが停止している場合
+        if (state.remainingSeconds <= 0) {
+            // 完了状態での停止の場合
+            if (!timerCompleted) {
+                timerCompleted = true;
+                timerComplete();
+            }
+        } else {
+            // 通常の停止の場合
+            if (!timerCompleted) {
+                stopTimer();
+            }
+        }
     }
 }
 
@@ -365,6 +393,7 @@ function updateTimerDisplay() {
 
 function stopTimer() {
     timerActive = false;
+    timerCompleted = false; // 完了フラグをリセット
     
     if (localTimerInterval) {
         clearInterval(localTimerInterval);
@@ -377,6 +406,8 @@ function stopTimer() {
 }
 
 function timerComplete() {
+    console.log('Timer completed - showing completion message');
+    
     if (timerElement) {
         const theme = iconThemes[currentTheme];
         const targetIcon = timerElement.querySelector('#target-icon');
