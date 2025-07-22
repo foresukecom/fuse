@@ -439,9 +439,8 @@ function timerComplete() {
             closeButton.addEventListener('click', stopTimer);
         }
         
-        setTimeout(() => {
-            stopTimer();
-        }, 5000);
+        // 完了メッセージは時間経過では消えないように変更
+        // ユーザーが×ボタンを押すか手動で停止するまで表示し続ける
     }
     
     // ローカルタイマーを停止
