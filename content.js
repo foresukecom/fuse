@@ -34,12 +34,7 @@ const iconThemes = {
         target: {type: 'file', path: 'icons/house.svg'},
         lineColor: '#90EE90',
         burnedColor: 'linear-gradient(to right, #228B22, #32CD32)',
-        completeIcon: {
-            type: 'svg',
-            content: `<svg viewBox="0 0 24 24" width="48" height="48" fill="#FF69B4">
-                <path d="M12 2 C13.1 2 14 2.9 14 4 C14 5.1 13.1 6 12 6 C10.9 6 10 5.1 10 4 C10 2.9 10.9 2 12 2 Z M21 9 C22.1 9 23 9.9 23 11 C23 12.1 22.1 13 21 13 C19.9 13 19 12.1 19 11 C19 9.9 19.9 9 21 9 Z M3 9 C4.1 9 5 9.9 5 11 C5 12.1 4.1 13 3 13 C1.9 13 1 12.1 1 11 C1 9.9 1.9 9 3 9 Z M12 8 C16.4 8 20 11.6 20 16 C20 20.4 16.4 24 12 24 C7.6 24 4 20.4 4 16 C4 11.6 7.6 8 12 8 Z"/>
-            </svg>`
-        },
+        completeIcon: {type: 'emoji', content: '🐾'},
         completeMessage: '🏠 おかえり！'
     },
     ship: {
