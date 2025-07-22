@@ -2,6 +2,7 @@ let timerActive = false;
 let timerElement = null;
 let timerData = null;
 let currentTheme = 'bomb'; // デフォルトテーマ
+let localTimerInterval = null; // ローカルタイマーInterval
 
 // SVGファイルを読み込む関数
 async function loadSvgFile(path) {
@@ -235,6 +236,31 @@ async function startTimer(data) {
     
     timerElement.style.display = 'block';
     updateTimerDisplay();
+    startLocalTimer();
+}
+
+function startLocalTimer() {
+    if (localTimerInterval) {
+        clearInterval(localTimerInterval);
+    }
+    
+    localTimerInterval = setInterval(() => {
+        if (timerData && timerData.isRunning && timerData.startTime) {
+            const elapsed = Math.floor((Date.now() - timerData.startTime) / 1000);
+            const remaining = Math.max(0, timerData.totalSeconds - elapsed);
+            
+            // ローカルで残り時間を更新
+            timerData.remainingSeconds = remaining;
+            
+            if (remaining <= 0) {
+                timerComplete();
+                clearInterval(localTimerInterval);
+                localTimerInterval = null;
+            } else {
+                updateTimerDisplay();
+            }
+        }
+    }, 1000);
 }
 
 function syncTimer(state) {
@@ -270,11 +296,13 @@ function syncTimer(state) {
                         timerComplete();
                     } else {
                         updateTimerDisplay();
+                        startLocalTimer(); // ローカルタイマーを開始
                     }
                 });
                 return;
             }
             timerElement.style.display = 'block';
+            startLocalTimer(); // ローカルタイマーを開始
         }
         
         // 完了状態の場合
@@ -338,6 +366,11 @@ function updateTimerDisplay() {
 function stopTimer() {
     timerActive = false;
     
+    if (localTimerInterval) {
+        clearInterval(localTimerInterval);
+        localTimerInterval = null;
+    }
+    
     if (timerElement) {
         timerElement.style.display = 'none';
     }
@@ -380,7 +413,11 @@ function timerComplete() {
         }, 5000);
     }
     
-    stopTimer();
+    // ローカルタイマーを停止
+    if (localTimerInterval) {
+        clearInterval(localTimerInterval);
+        localTimerInterval = null;
+    }
 }
 
 const style = document.createElement('style');
