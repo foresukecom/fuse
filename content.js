@@ -3,38 +3,91 @@ let timerElement = null;
 let timerData = null;
 let currentTheme = 'bomb'; // デフォルトテーマ
 
+// SVGファイルを読み込む関数
+async function loadSvgFile(path) {
+    try {
+        const response = await fetch(chrome.runtime.getURL(path));
+        const svgText = await response.text();
+        return svgText;
+    } catch (error) {
+        console.log('Error loading SVG file:', path, error);
+        return null;
+    }
+}
+
 // アイコンテーマ定義
 const iconThemes = {
     bomb: {
         name: '爆弾',
-        moving: '🔥',
-        target: '💣',
+        moving: {type: 'file', path: 'icons/fire.svg'},
+        target: {type: 'file', path: 'icons/bom.svg'},
         lineColor: '#8B4513',
         burnedColor: 'linear-gradient(to right, #2c2c2c, #444444)',
-        completeIcon: '💥',
+        completeIcon: {type: 'emoji', content: '💥'},
         completeMessage: '💥 時間です！'
     },
     dog: {
         name: '犬と家',
-        moving: '🐕',
-        target: '🏠',
+        moving: {type: 'file', path: 'icons/dog.svg'},
+        target: {type: 'file', path: 'icons/house.svg'},
         lineColor: '#90EE90',
         burnedColor: 'linear-gradient(to right, #228B22, #32CD32)',
-        completeIcon: '❤️',
+        completeIcon: {
+            type: 'svg',
+            content: `<svg viewBox="0 0 24 24" width="48" height="48" fill="#FF69B4">
+                <path d="M12 2 C13.1 2 14 2.9 14 4 C14 5.1 13.1 6 12 6 C10.9 6 10 5.1 10 4 C10 2.9 10.9 2 12 2 Z M21 9 C22.1 9 23 9.9 23 11 C23 12.1 22.1 13 21 13 C19.9 13 19 12.1 19 11 C19 9.9 19.9 9 21 9 Z M3 9 C4.1 9 5 9.9 5 11 C5 12.1 4.1 13 3 13 C1.9 13 1 12.1 1 11 C1 9.9 1.9 9 3 9 Z M12 8 C16.4 8 20 11.6 20 16 C20 20.4 16.4 24 12 24 C7.6 24 4 20.4 4 16 C4 11.6 7.6 8 12 8 Z"/>
+            </svg>`
+        },
         completeMessage: '🏠 おかえり！'
     },
     ship: {
         name: '船と島',
-        moving: '⛵',
-        target: '🏝️',
+        moving: {type: 'file', path: 'icons/ship.svg'},
+        target: {type: 'file', path: 'icons/island.svg'},
         lineColor: '#4169E1',
         burnedColor: 'linear-gradient(to right, #1E90FF, #87CEEB)',
-        completeIcon: '⚓',
+        completeIcon: {type: 'emoji', content: '⚓'},
         completeMessage: '🏝️ 到着しました！'
     }
 };
 
-function createTimerElement() {
+function createIconElement(iconConfig, size = '20px') {
+    const element = document.createElement('div');
+    
+    if (iconConfig.type === 'emoji') {
+        element.textContent = iconConfig.content;
+        element.style.fontSize = size;
+    } else if (iconConfig.type === 'svg') {
+        element.innerHTML = iconConfig.content;
+        element.style.width = size;
+        element.style.height = size;
+        element.style.display = 'flex';
+        element.style.alignItems = 'center';
+        element.style.justifyContent = 'center';
+    } else if (iconConfig.type === 'file') {
+        // ファイルパスからSVGを読み込む場合は非同期ロードが必要
+        loadSvgFile(iconConfig.path).then(svgContent => {
+            if (svgContent) {
+                element.innerHTML = svgContent;
+                // SVGのwidth/heightをオーバーライド
+                const svg = element.querySelector('svg');
+                if (svg) {
+                    svg.style.width = size;
+                    svg.style.height = size;
+                }
+            }
+        });
+        element.style.width = size;
+        element.style.height = size;
+        element.style.display = 'flex';
+        element.style.alignItems = 'center';
+        element.style.justifyContent = 'center';
+    }
+    
+    return element;
+}
+
+async function createTimerElement() {
     const theme = iconThemes[currentTheme];
     const container = document.createElement('div');
     container.id = 'fuse-timer-container';
@@ -80,15 +133,16 @@ function createTimerElement() {
     // 移動アイコン
     const movingIcon = document.createElement('div');
     movingIcon.id = 'moving-icon';
-    movingIcon.textContent = theme.moving;
     movingIcon.style.cssText = `
         position: absolute;
         bottom: 32px;
         left: 5px;
-        font-size: 20px;
         transition: left 0.1s linear;
         filter: drop-shadow(0 0 5px orange);
     `;
+    
+    const movingIconContent = createIconElement(theme.moving, '20px');
+    movingIcon.appendChild(movingIconContent);
     
     // タイマー表示（右端）
     const timerDisplay = document.createElement('div');
@@ -110,14 +164,15 @@ function createTimerElement() {
     // ターゲットアイコン（タイマーの左側）
     const targetIcon = document.createElement('div');
     targetIcon.id = 'target-icon';
-    targetIcon.textContent = theme.target;
     targetIcon.style.cssText = `
         position: absolute;
         bottom: 28px;
         right: 120px;
-        font-size: 32px;
         filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
     `;
+    
+    const targetIconContent = createIconElement(theme.target, '32px');
+    targetIcon.appendChild(targetIconContent);
     
     // 閉じるボタン
     const closeButton = document.createElement('button');
@@ -165,7 +220,7 @@ function formatTime(totalSeconds) {
     }
 }
 
-function startTimer(data) {
+async function startTimer(data) {
     if (timerActive) {
         stopTimer();
     }
@@ -174,7 +229,7 @@ function startTimer(data) {
     timerActive = true;
     
     if (!timerElement) {
-        timerElement = createTimerElement();
+        timerElement = await createTimerElement();
         document.body.appendChild(timerElement);
     }
     
@@ -207,8 +262,17 @@ function syncTimer(state) {
         if (!timerActive) {
             timerActive = true;
             if (!timerElement) {
-                timerElement = createTimerElement();
-                document.body.appendChild(timerElement);
+                createTimerElement().then(element => {
+                    timerElement = element;
+                    document.body.appendChild(timerElement);
+                    timerElement.style.display = 'block';
+                    if (state.remainingSeconds <= 0) {
+                        timerComplete();
+                    } else {
+                        updateTimerDisplay();
+                    }
+                });
+                return;
             }
             timerElement.style.display = 'block';
         }
@@ -288,8 +352,9 @@ function timerComplete() {
         
         // 完了アニメーション
         if (targetIcon) {
-            targetIcon.textContent = theme.completeIcon;
-            targetIcon.style.fontSize = '48px';
+            targetIcon.innerHTML = '';
+            const completeIconContent = createIconElement(theme.completeIcon, '48px');
+            targetIcon.appendChild(completeIconContent);
             targetIcon.style.animation = 'completion 1s ease-out';
         }
         
@@ -360,12 +425,12 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-function changeTheme(themeName) {
+async function changeTheme(themeName) {
     currentTheme = themeName;
     if (timerActive && timerElement) {
         // 既存のタイマーを再作成
         const oldElement = timerElement;
-        timerElement = createTimerElement();
+        timerElement = await createTimerElement();
         oldElement.parentNode.replaceChild(timerElement, oldElement);
         updateTimerDisplay();
     }
@@ -379,8 +444,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         if (request.timerData.theme) {
             currentTheme = request.timerData.theme;
         }
-        startTimer(request.timerData);
-        sendResponse({success: true});
+        startTimer(request.timerData).then(() => {
+            sendResponse({success: true});
+        });
+        return true; // 非同期レスポンスを示す
     }
     
     if (request.action === 'stopTimer') {
@@ -397,8 +464,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     
     if (request.action === 'changeTheme') {
         console.log('Changing theme to:', request.theme);
-        changeTheme(request.theme);
-        sendResponse({success: true});
+        changeTheme(request.theme).then(() => {
+            sendResponse({success: true});
+        });
+        return true; // 非同期レスポンスを示す
     }
 });
 
