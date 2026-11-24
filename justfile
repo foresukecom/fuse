@@ -8,6 +8,10 @@ extension_files := "manifest.json content.js popup.html popup.js icons"
 default:
     @just --list --unsorted
 
+# 依存のインストール（初回・clone 直後）。postinstall で Playwright 用の Chromium も取得する
+setup:
+    npm install
+
 # 配布ファイルだけを dist/extension/ にコピーする。Chrome にはこのディレクトリを読み込む
 build:
     rm -rf dist/extension
@@ -15,6 +19,10 @@ build:
     cp -R {{ extension_files }} dist/extension/
     find dist/extension -name .DS_Store -delete
     @echo "dist/extension/ を作成しました"
+
+# Playwright のテストを実行する（dist/extension/ を読み込むため、先にビルドする）
+test: build
+    npm test
 
 # ストア提出用の ZIP を dist/ に作成する
 package: build
@@ -29,4 +37,4 @@ package: build
 
 # 生成物を削除する
 clean:
-    rm -rf dist
+    rm -rf dist test-results playwright-report
