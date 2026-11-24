@@ -2,7 +2,7 @@
 # ツールは devShell（nix develop / direnv）に入っている前提
 
 # 拡張機能として配布するファイル・ディレクトリ
-extension_files := "manifest.json background.js content.js popup.html popup.js icons"
+extension_files := "manifest.json content.js popup.html popup.js icons"
 
 # レシピ一覧
 default:

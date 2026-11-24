@@ -5,37 +5,38 @@ document.addEventListener('DOMContentLoaded', function() {
     const stopButton = document.getElementById('stopTimer');
     const status = document.getElementById('status');
 
-    // 保存されたテーマを読み込み
-    chrome.storage.sync.get(['selectedTheme', 'timerState'], function(result) {
-        if (result.selectedTheme) {
-            themeSelect.value = result.selectedTheme;
+    function isActiveTimer(state) {
+        return Boolean(state && state.isRunning && state.totalSeconds > 0 && typeof state.startTime === 'number');
+    }
+
+    function showState(state) {
+        if (!isActiveTimer(state)) {
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            return;
         }
-        
-        if (result.timerState && result.timerState.isRunning) {
-            startButton.disabled = true;
-            stopButton.disabled = false;
-            status.textContent = 'タイマー実行中...';
-        } else {
-            chrome.storage.sync.set({timerState: {isRunning: false}});
+        const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+        const finished = elapsed >= state.totalSeconds;
+        // 完了後も各タブに完了メッセージが残っているので、停止ボタンで消せるようにしておく
+        startButton.disabled = !finished;
+        stopButton.disabled = false;
+        status.textContent = finished ? '時間になりました' : 'タイマー実行中...';
+    }
+
+    // 保存されたテーマとタイマーの状態を読み込み
+    Promise.all([
+        chrome.storage.sync.get('selectedTheme'),
+        chrome.storage.local.get('timerState')
+    ]).then(([sync, local]) => {
+        if (sync.selectedTheme) {
+            themeSelect.value = sync.selectedTheme;
         }
+        showState(local.timerState);
     });
 
-    // テーマ変更時の処理
+    // テーマ変更はストレージ経由ですべてのタブに反映される
     themeSelect.addEventListener('change', function() {
-        const selectedTheme = themeSelect.value;
-        chrome.storage.sync.set({selectedTheme: selectedTheme}, function() {
-            // アクティブなタブにテーマ変更を通知
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                if (tabs[0]) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        action: 'changeTheme',
-                        theme: selectedTheme
-                    }).catch(error => {
-                        console.log('テーマ変更メッセージ送信エラー:', error);
-                    });
-                }
-            });
-        });
+        chrome.storage.sync.set({selectedTheme: themeSelect.value});
     });
 
     startButton.addEventListener('click', function() {
@@ -45,26 +46,21 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        console.log('Time input value:', timeValue);
         const timeParts = timeValue.split(':');
         const hours = parseInt(timeParts[0]) || 0;
         const minutes = parseInt(timeParts[1]) || 0;
         const seconds = parseInt(timeParts[2]) || 0; // step="1"がある場合のみ存在
         const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
-        
-        console.log('Parsed time:', {hours, minutes, seconds, totalSeconds});
-        
+
         if (totalSeconds <= 0) {
             status.textContent = '時間を正しく設定してください';
             return;
         }
 
-        const timerData = {
+        const timerState = {
             totalSeconds: totalSeconds,
-            remainingSeconds: totalSeconds,
             isRunning: true,
-            startTime: Date.now(),
-            theme: themeSelect.value
+            startTime: Date.now()
         };
 
         let timeText = '';
@@ -78,39 +74,19 @@ document.addEventListener('DOMContentLoaded', function() {
             timeText = `${seconds}秒`;
         }
 
-        chrome.storage.sync.set({timerState: timerData}, function() {
+        // 各タブは storage.onChanged でタイマーの開始を受け取る
+        chrome.storage.local.set({timerState: timerState}).then(() => {
             startButton.disabled = true;
             stopButton.disabled = false;
             status.textContent = `タイマー開始: ${timeText}`;
-            
-            console.log('Starting global timer with data:', timerData);
-            
-            // バックグラウンドスクリプトでグローバルタイマーを開始
-            chrome.runtime.sendMessage({
-                action: 'startGlobalTimer',
-                timerData: timerData
-            }).then(response => {
-                console.log('Global timer started successfully:', response);
-            }).catch(error => {
-                console.log('グローバルタイマー開始エラー:', error);
-            });
         });
     });
 
     stopButton.addEventListener('click', function() {
-        chrome.storage.sync.set({timerState: {isRunning: false}}, function() {
+        chrome.storage.local.set({timerState: {isRunning: false}}).then(() => {
             startButton.disabled = false;
             stopButton.disabled = true;
             status.textContent = 'タイマーを停止しました';
-            
-            // バックグラウンドスクリプトでグローバルタイマーを停止
-            chrome.runtime.sendMessage({
-                action: 'stopGlobalTimer'
-            }).then(response => {
-                console.log('Global timer stopped successfully:', response);
-            }).catch(error => {
-                console.log('グローバルタイマー停止エラー:', error);
-            });
         });
     });
 });
