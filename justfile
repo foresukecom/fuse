@@ -35,6 +35,10 @@ package: build
     (cd dist/extension && zip -r -X "$zip_path" .)
     echo "dist/fuse-${version}.zip を作成しました"
 
+# images/icon-source*.svg から icons/ の拡張機能アイコンを再生成する
+icons:
+    ./scripts/generate-icons.sh
+
 # 生成物を削除する
 clean:
     rm -rf dist test-results playwright-report

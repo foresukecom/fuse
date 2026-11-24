@@ -47,6 +47,7 @@ direnv を使う場合は、初回のみ `direnv allow` を実行すると、以
 | `just build` | 配布ファイルを `dist/extension/` にコピー |
 | `just test` | ビルドしてテストを実行 |
 | `just package` | ストア提出用の ZIP を `dist/` に作成 |
+| `just icons` | `images/icon-source*.svg` から拡張機能のアイコンを再生成 |
 | `just clean` | 生成物を削除 |
 
 ### Chrome への読み込み
@@ -56,3 +57,9 @@ direnv を使う場合は、初回のみ `direnv allow` を実行すると、以
 3. 「パッケージ化されていない拡張機能を読み込む」から `dist/extension/` を選択します。
 
 リポジトリのディレクトリをそのまま読み込むと、`.direnv/` なども拡張機能の一部として扱われ、不要なファイルについての警告が出ます。コードを変更したら `just build` を実行し、拡張機能を再読み込みしてください。
+
+## クレジット
+
+テーマで使用しているアイコンのうち、`icons/dog.svg` は [Font Awesome Free 5](https://fontawesome.com/) の「dog」アイコンです（© Fonticons, Inc., [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)）。サイズ指定などの属性のみ変更しています。
+
+それ以外のアイコン（`icons/*.svg`、`images/icon-source*.svg`）はこのリポジトリのために作成したものです。
