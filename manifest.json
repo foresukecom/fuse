@@ -2,14 +2,13 @@
   "manifest_version": 3,
   "name": "fuse",
   "version": "1.0",
-  "description": "A simple Chrome extension",
+  "description": "画面の下で燃えていく導火線で、残り時間をひと目で伝えるタイマーです。",
   "permissions": [
-    "activeTab",
     "storage"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "My Extension"
+    "default_title": "fuse タイマー"
   },
   "content_scripts": [
     {
