@@ -1,26 +1,10 @@
-let timerActive = false;
-let timerElement = null;
-let timerData = null;
-let currentTheme = 'bomb'; // デフォルトテーマ
-let localTimerInterval = null; // ローカルタイマーInterval
-let timerCompleted = false; // 完了処理の重複実行を防ぐフラグ
-
-// SVGファイルを読み込む関数
-async function loadSvgFile(path) {
-    try {
-        const response = await fetch(chrome.runtime.getURL(path));
-        const svgText = await response.text();
-        return svgText;
-    } catch (error) {
-        console.log('Error loading SVG file:', path, error);
-        return null;
-    }
-}
+// 画面下部に導火線タイマーを表示する content script。
+// タイマーの状態は chrome.storage.local の timerState に保存されており、
+// 各タブは開始時刻から残り時間を自分で計算する。状態の変化は storage.onChanged で受け取る。
 
 // アイコンテーマ定義
 const iconThemes = {
     bomb: {
-        name: '爆弾',
         moving: {type: 'file', path: 'icons/fire.svg'},
         target: {type: 'file', path: 'icons/bom.svg'},
         lineColor: '#8B4513',
@@ -29,7 +13,6 @@ const iconThemes = {
         completeMessage: '💥 時間です！'
     },
     dog: {
-        name: '犬と家',
         moving: {type: 'file', path: 'icons/dog.svg'},
         target: {type: 'file', path: 'icons/house.svg'},
         lineColor: '#90EE90',
@@ -38,7 +21,6 @@ const iconThemes = {
         completeMessage: '🏠 おかえり！'
     },
     ship: {
-        name: '船と島',
         moving: {type: 'file', path: 'icons/ship.svg'},
         target: {type: 'file', path: 'icons/island.svg'},
         lineColor: '#4169E1',
@@ -47,104 +29,48 @@ const iconThemes = {
         completeMessage: '🏝️ 到着しました！'
     }
 };
+const DEFAULT_THEME = 'bomb';
 
-function createIconElement(iconConfig, size = '20px') {
-    const element = document.createElement('div');
-    
-    if (iconConfig.type === 'emoji') {
-        element.textContent = iconConfig.content;
-        element.style.fontSize = size;
-    } else if (iconConfig.type === 'svg') {
-        element.innerHTML = iconConfig.content;
-        element.style.width = size;
-        element.style.height = size;
-        element.style.display = 'flex';
-        element.style.alignItems = 'center';
-        element.style.justifyContent = 'center';
-    } else if (iconConfig.type === 'file') {
-        // ファイルパスからSVGを読み込む場合は非同期ロードが必要
-        loadSvgFile(iconConfig.path).then(svgContent => {
-            if (svgContent) {
-                element.innerHTML = svgContent;
-                // SVGのwidth/heightをオーバーライド
-                const svg = element.querySelector('svg');
-                if (svg) {
-                    svg.style.width = size;
-                    svg.style.height = size;
-                }
-            }
-        });
-        element.style.width = size;
-        element.style.height = size;
-        element.style.display = 'flex';
-        element.style.alignItems = 'center';
-        element.style.justifyContent = 'center';
+// ページのCSSと互いに影響しないよう、表示はすべて Shadow DOM の中に置く
+const SHADOW_STYLE = `
+    .container {
+        position: absolute;
+        inset: 0;
+        font-family: sans-serif;
     }
-    
-    return element;
-}
-
-async function createTimerElement() {
-    const theme = iconThemes[currentTheme];
-    const container = document.createElement('div');
-    container.id = 'fuse-timer-container';
-    container.style.cssText = `
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 80px;
-        z-index: 10000;
-        pointer-events: none;
-    `;
-    
-    // 導火線ライン（燃えていない部分）
-    const fuseLine = document.createElement('div');
-    fuseLine.id = 'fuse-line';
-    fuseLine.style.cssText = `
+    .line {
         position: absolute;
         bottom: 40px;
         left: 20px;
-        right: 160px;
         height: 4px;
-        background: ${theme.lineColor};
         border-radius: 2px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    `;
-    
-    // 導火線ライン（燃えた部分）
-    const burnedLine = document.createElement('div');
-    burnedLine.id = 'burned-line';
-    burnedLine.style.cssText = `
-        position: absolute;
-        bottom: 40px;
-        left: 20px;
-        width: 0px;
-        height: 4px;
-        background: ${theme.burnedColor};
-        border-radius: 2px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        transition: width 0.1s linear;
-    `;
-    
-    // 移動アイコン
-    const movingIcon = document.createElement('div');
-    movingIcon.id = 'moving-icon';
-    movingIcon.style.cssText = `
+    }
+    .fuse-line { right: 160px; }
+    .burned-line { width: 0; transition: width 0.1s linear; }
+    .icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .icon svg { width: 100%; height: 100%; }
+    .moving-icon {
         position: absolute;
         bottom: 32px;
         left: 5px;
         transition: left 0.1s linear;
         filter: drop-shadow(0 0 5px orange);
-    `;
-    
-    const movingIconContent = createIconElement(theme.moving, '20px');
-    movingIcon.appendChild(movingIconContent);
-    
-    // タイマー表示（右端）
-    const timerDisplay = document.createElement('div');
-    timerDisplay.id = 'timer-display';
-    timerDisplay.style.cssText = `
+    }
+    .moving-icon.hurry { animation: icon-flicker 0.2s infinite alternate; }
+    .target-icon {
+        position: absolute;
+        bottom: 28px;
+        right: 120px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+    .target-icon.hurry { animation: target-shake 0.5s infinite; }
+    .target-icon.complete { animation: completion 1s ease-out; }
+    .display {
         position: absolute;
         bottom: 28px;
         right: 20px;
@@ -156,25 +82,9 @@ async function createTimerElement() {
         font-size: 16px;
         font-weight: bold;
         pointer-events: auto;
-    `;
-    
-    // ターゲットアイコン（タイマーの左側）
-    const targetIcon = document.createElement('div');
-    targetIcon.id = 'target-icon';
-    targetIcon.style.cssText = `
-        position: absolute;
-        bottom: 28px;
-        right: 120px;
-        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-    `;
-    
-    const targetIconContent = createIconElement(theme.target, '32px');
-    targetIcon.appendChild(targetIconContent);
-    
-    // 閉じるボタン
-    const closeButton = document.createElement('button');
-    closeButton.textContent = '×';
-    closeButton.style.cssText = `
+    }
+    .container.complete .display { background: rgba(255, 100, 0, 0.9); }
+    .close {
         position: absolute;
         top: 2px;
         right: 2px;
@@ -190,280 +100,10 @@ async function createTimerElement() {
         align-items: center;
         justify-content: center;
         opacity: 0.7;
-        pointer-events: auto;
-    `;
-    
-    closeButton.addEventListener('click', stopTimer);
-    timerDisplay.appendChild(closeButton);
-    
-    container.appendChild(fuseLine);
-    container.appendChild(burnedLine);
-    container.appendChild(movingIcon);
-    container.appendChild(targetIcon);
-    container.appendChild(timerDisplay);
-    
-    return container;
-}
-
-function formatTime(totalSeconds) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    
-    if (hours > 0) {
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    } else {
-        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-}
-
-async function startTimer(data) {
-    if (timerActive) {
-        stopTimer();
-    }
-    
-    timerData = data;
-    timerActive = true;
-    timerCompleted = false; // 完了フラグをリセット
-    
-    if (!timerElement) {
-        timerElement = await createTimerElement();
-        document.body.appendChild(timerElement);
-    }
-    
-    timerElement.style.display = 'block';
-    updateTimerDisplay();
-    startLocalTimer();
-}
-
-function startLocalTimer() {
-    if (localTimerInterval) {
-        clearInterval(localTimerInterval);
-    }
-    
-    localTimerInterval = setInterval(() => {
-        if (timerData && timerData.isRunning && timerData.startTime) {
-            const elapsed = Math.floor((Date.now() - timerData.startTime) / 1000);
-            const remaining = Math.max(0, timerData.totalSeconds - elapsed);
-            
-            // ローカルで残り時間を更新
-            timerData.remainingSeconds = remaining;
-            
-            if (remaining <= 0) {
-                if (!timerCompleted) {
-                    timerCompleted = true;
-                    timerComplete();
-                }
-                clearInterval(localTimerInterval);
-                localTimerInterval = null;
-            } else {
-                updateTimerDisplay();
-            }
-        }
-    }, 1000);
-}
-
-function syncTimer(state) {
-    console.log('Syncing timer with state:', state);
-    
-    if (state.isRunning) {
-        // 必須フィールドをチェック
-        if (!state.totalSeconds || !state.startTime) {
-            console.log('Invalid timer state received, ignoring');
-            return;
-        }
-        
-        // remainingSecondsがない場合は計算
-        if (state.remainingSeconds === null || state.remainingSeconds === undefined) {
-            const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
-            state.remainingSeconds = Math.max(0, state.totalSeconds - elapsed);
-            console.log('Calculated remainingSeconds:', state.remainingSeconds);
-        }
-        
-        timerData = state;
-        if (state.theme) {
-            currentTheme = state.theme;
-        }
-        
-        // syncTimer呼び出し時に完了フラグをリセット
-        if (state.isRunning && state.remainingSeconds > 0) {
-            timerCompleted = false;
-        }
-        
-        if (!timerActive) {
-            timerActive = true;
-            if (!timerElement) {
-                createTimerElement().then(element => {
-                    timerElement = element;
-                    document.body.appendChild(timerElement);
-                    timerElement.style.display = 'block';
-                    if (state.remainingSeconds <= 0) {
-                        if (!timerCompleted) {
-                            timerCompleted = true;
-                            timerComplete();
-                        }
-                    } else {
-                        updateTimerDisplay();
-                        startLocalTimer(); // ローカルタイマーを開始
-                    }
-                });
-                return;
-            }
-            timerElement.style.display = 'block';
-            startLocalTimer(); // ローカルタイマーを開始
-        }
-        
-        // 完了状態の場合
-        if (state.remainingSeconds <= 0) {
-            if (!timerCompleted) {
-                timerCompleted = true;
-                timerComplete();
-            }
-        } else {
-            updateTimerDisplay();
-        }
-    } else {
-        // タイマーが停止している場合
-        if (state.remainingSeconds <= 0) {
-            // 完了状態での停止の場合
-            if (!timerCompleted) {
-                timerCompleted = true;
-                timerComplete();
-            }
-        } else {
-            // 通常の停止の場合
-            if (!timerCompleted) {
-                stopTimer();
-            }
-        }
-    }
-}
-
-function updateTimerDisplay() {
-    if (timerElement && timerData) {
-        const timeText = formatTime(timerData.remainingSeconds);
-        const timerDisplay = timerElement.querySelector('#timer-display');
-        const movingIcon = timerElement.querySelector('#moving-icon');
-        const targetIcon = timerElement.querySelector('#target-icon');
-        
-        if (timerDisplay) {
-            timerDisplay.innerHTML = `
-                <button style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: white; font-size: 14px; cursor: pointer; padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; opacity: 0.7; pointer-events: auto;">×</button>
-                ${timeText}
-            `;
-            
-            const closeButton = timerDisplay.querySelector('button');
-            closeButton.addEventListener('click', stopTimer);
-        }
-        
-        // 移動アイコンの位置を更新（左から右へ移動）
-        if (movingIcon && timerData.totalSeconds > 0) {
-            const progress = 1 - (timerData.remainingSeconds / timerData.totalSeconds);
-            const containerWidth = window.innerWidth;
-            const startPos = 5;
-            const endPos = containerWidth - 180;
-            const currentPos = startPos + (progress * (endPos - startPos));
-            
-            movingIcon.style.left = currentPos + 'px';
-            
-            // 燃えた部分の導火線を更新
-            const burnedLine = timerElement.querySelector('#burned-line');
-            if (burnedLine) {
-                const burnedWidth = currentPos - 15;
-                burnedLine.style.width = Math.max(0, burnedWidth) + 'px';
-            }
-            
-            // 残り時間が少なくなったらアニメーションを追加
-            if (timerData.remainingSeconds <= 10) {
-                movingIcon.style.animation = 'icon-flicker 0.2s infinite alternate';
-            }
-        }
-        
-        // ターゲットアイコンのアニメーション（残り時間が少なくなったら）
-        if (targetIcon && timerData.remainingSeconds <= 10) {
-            targetIcon.style.animation = 'target-shake 0.5s infinite';
-        }
-    }
-}
-
-function stopTimer() {
-    timerActive = false;
-    timerCompleted = false; // 完了フラグをリセット
-    
-    if (localTimerInterval) {
-        clearInterval(localTimerInterval);
-        localTimerInterval = null;
-    }
-    
-    if (timerElement) {
-        timerElement.style.display = 'none';
-    }
-}
-
-function timerComplete() {
-    console.log('Timer completed - showing completion message');
-    
-    if (timerElement) {
-        const theme = iconThemes[currentTheme];
-        const targetIcon = timerElement.querySelector('#target-icon');
-        const movingIcon = timerElement.querySelector('#moving-icon');
-        const timerDisplay = timerElement.querySelector('#timer-display');
-        
-        // 完了アニメーション
-        if (targetIcon) {
-            targetIcon.innerHTML = '';
-            const completeIconContent = createIconElement(theme.completeIcon, '48px');
-            targetIcon.appendChild(completeIconContent);
-            targetIcon.style.animation = 'completion 1s ease-out';
-        }
-        
-        // 移動アイコンを非表示
-        if (movingIcon) {
-            movingIcon.style.display = 'none';
-        }
-        
-        // タイマー表示を更新
-        if (timerDisplay) {
-            timerDisplay.innerHTML = `
-                <button style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: white; font-size: 14px; cursor: pointer; padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; opacity: 0.7; pointer-events: auto;">×</button>
-                ${theme.completeMessage}
-            `;
-            timerDisplay.style.background = 'rgba(255, 100, 0, 0.9)';
-            
-            const closeButton = timerDisplay.querySelector('button');
-            closeButton.addEventListener('click', stopTimer);
-        }
-        
-        // 完了メッセージは時間経過では消えないように変更
-        // ユーザーが×ボタンを押すか手動で停止するまで表示し続ける
-    }
-    
-    // ローカルタイマーを停止
-    if (localTimerInterval) {
-        clearInterval(localTimerInterval);
-        localTimerInterval = null;
-    }
-}
-
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-    }
-    @keyframes bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
     }
     @keyframes icon-flicker {
-        0% { 
-            transform: scale(1) rotate(-2deg);
-            filter: drop-shadow(0 0 5px orange);
-        }
-        100% { 
-            transform: scale(1.1) rotate(2deg);
-            filter: drop-shadow(0 0 8px red);
-        }
+        0% { transform: scale(1) rotate(-2deg); filter: drop-shadow(0 0 5px orange); }
+        100% { transform: scale(1.1) rotate(2deg); filter: drop-shadow(0 0 8px red); }
     }
     @keyframes target-shake {
         0%, 100% { transform: translateX(0); }
@@ -471,91 +111,223 @@ style.textContent = `
         75% { transform: translateX(2px); }
     }
     @keyframes completion {
-        0% { 
-            transform: scale(1);
-            opacity: 1;
-        }
-        50% { 
-            transform: scale(1.5);
-            opacity: 0.8;
-        }
-        100% { 
-            transform: scale(2);
-            opacity: 0.4;
-        }
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.5); opacity: 0.8; }
+        100% { transform: scale(2); opacity: 0.4; }
     }
 `;
-document.head.appendChild(style);
 
-async function changeTheme(themeName) {
-    currentTheme = themeName;
-    if (timerActive && timerElement) {
-        // 既存のタイマーを再作成
-        const oldElement = timerElement;
-        timerElement = await createTimerElement();
-        oldElement.parentNode.replaceChild(timerElement, oldElement);
-        updateTimerDisplay();
+let timerState = null;
+let themeName = DEFAULT_THEME;
+let ui = null;
+let tickInterval = null;
+
+const svgCache = new Map();
+
+function loadSvgFile(path) {
+    if (!svgCache.has(path)) {
+        svgCache.set(path, fetch(chrome.runtime.getURL(path))
+            .then(response => response.text())
+            .catch(() => null));
+    }
+    return svgCache.get(path);
+}
+
+function createIconElement(iconConfig, size) {
+    const element = document.createElement('div');
+    element.className = 'icon';
+    element.style.width = size;
+    element.style.height = size;
+
+    if (iconConfig.type === 'emoji') {
+        element.textContent = iconConfig.content;
+        element.style.fontSize = size;
+    } else if (iconConfig.type === 'file') {
+        loadSvgFile(iconConfig.path).then(svgContent => {
+            if (svgContent) {
+                element.innerHTML = svgContent;
+            }
+        });
+    }
+
+    return element;
+}
+
+function createTimerUi(theme) {
+    const host = document.createElement('fuse-timer');
+    host.style.cssText = `
+        all: initial !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 80px !important;
+        z-index: 2147483647 !important;
+        pointer-events: none !important;
+    `;
+    const shadow = host.attachShadow({mode: 'open'});
+
+    const style = document.createElement('style');
+    style.textContent = SHADOW_STYLE;
+
+    const container = document.createElement('div');
+    container.className = 'container';
+
+    // 導火線ライン（燃えていない部分）
+    const fuseLine = document.createElement('div');
+    fuseLine.className = 'line fuse-line';
+    fuseLine.style.background = theme.lineColor;
+
+    // 導火線ライン（燃えた部分）
+    const burnedLine = document.createElement('div');
+    burnedLine.className = 'line burned-line';
+    burnedLine.style.background = theme.burnedColor;
+
+    // 移動アイコン
+    const movingIcon = document.createElement('div');
+    movingIcon.className = 'moving-icon';
+    movingIcon.appendChild(createIconElement(theme.moving, '20px'));
+
+    // ターゲットアイコン（タイマーの左側）
+    const targetIcon = document.createElement('div');
+    targetIcon.className = 'target-icon';
+    targetIcon.appendChild(createIconElement(theme.target, '32px'));
+
+    // タイマー表示（右端）
+    const display = document.createElement('div');
+    display.className = 'display';
+    const displayText = document.createElement('span');
+    const closeButton = document.createElement('button');
+    closeButton.className = 'close';
+    closeButton.textContent = '×';
+    closeButton.title = 'タイマーを停止';
+    // 停止はすべてのタブに反映させるため、ストレージの状態を変える
+    closeButton.addEventListener('click', () => {
+        chrome.storage.local.set({timerState: {isRunning: false}});
+    });
+    display.append(closeButton, displayText);
+
+    container.append(fuseLine, burnedLine, movingIcon, targetIcon, display);
+    shadow.append(style, container);
+    (document.body || document.documentElement).appendChild(host);
+
+    return {host, container, burnedLine, movingIcon, targetIcon, displayText, theme, completed: false};
+}
+
+function removeTimerUi() {
+    if (ui) {
+        ui.host.remove();
+        ui = null;
     }
 }
 
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-    console.log('Content script received message:', request);
-    
-    if (request.action === 'startTimer') {
-        console.log('Starting timer with data:', request.timerData);
-        if (request.timerData.theme) {
-            currentTheme = request.timerData.theme;
-        }
-        startTimer(request.timerData).then(() => {
-            sendResponse({success: true});
-        });
-        return true; // 非同期レスポンスを示す
+function formatTime(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (n) => n.toString().padStart(2, '0');
+
+    if (hours > 0) {
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
     }
-    
-    if (request.action === 'stopTimer') {
-        console.log('Stopping timer');
-        stopTimer();
-        sendResponse({success: true});
+    return `${pad(minutes)}:${pad(seconds)}`;
+}
+
+function isActiveTimer(state) {
+    return Boolean(state && state.isRunning && state.totalSeconds > 0 && typeof state.startTime === 'number');
+}
+
+function getRemainingSeconds(state) {
+    const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+    return Math.max(0, state.totalSeconds - elapsed);
+}
+
+function showProgress(remaining) {
+    ui.displayText.textContent = formatTime(remaining);
+
+    // 移動アイコンの位置を更新（左から右へ移動）
+    const progress = 1 - (remaining / timerState.totalSeconds);
+    const startPos = 5;
+    const endPos = window.innerWidth - 180;
+    const currentPos = startPos + (progress * (endPos - startPos));
+    ui.movingIcon.style.left = currentPos + 'px';
+
+    // 燃えた部分の導火線を更新
+    ui.burnedLine.style.width = Math.max(0, currentPos - 15) + 'px';
+
+    // 残り時間が少なくなったらアニメーションを追加
+    const hurry = remaining <= 10;
+    ui.movingIcon.classList.toggle('hurry', hurry);
+    ui.targetIcon.classList.toggle('hurry', hurry);
+}
+
+function showComplete() {
+    if (ui.completed) {
+        return;
     }
-    
-    if (request.action === 'syncTimer') {
-        console.log('Syncing timer with state:', request.timerState);
-        syncTimer(request.timerState);
-        sendResponse({success: true});
+    ui.completed = true;
+
+    // 完了メッセージは時間経過では消さず、停止されるまで表示し続ける
+    ui.container.classList.add('complete');
+    ui.movingIcon.style.display = 'none';
+    ui.targetIcon.classList.remove('hurry');
+    ui.targetIcon.replaceChildren(createIconElement(ui.theme.completeIcon, '48px'));
+    ui.targetIcon.classList.add('complete');
+    ui.displayText.textContent = ui.theme.completeMessage;
+}
+
+function stopTicking() {
+    if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
     }
-    
-    if (request.action === 'changeTheme') {
-        console.log('Changing theme to:', request.theme);
-        changeTheme(request.theme).then(() => {
-            sendResponse({success: true});
-        });
-        return true; // 非同期レスポンスを示す
+}
+
+function render() {
+    if (!isActiveTimer(timerState)) {
+        stopTicking();
+        removeTimerUi();
+        return;
+    }
+
+    const theme = iconThemes[themeName] || iconThemes[DEFAULT_THEME];
+    if (!ui || ui.theme !== theme) {
+        removeTimerUi();
+        ui = createTimerUi(theme);
+    }
+
+    const remaining = getRemainingSeconds(timerState);
+    if (remaining <= 0) {
+        stopTicking();
+        showComplete();
+        return;
+    }
+
+    showProgress(remaining);
+    if (!tickInterval) {
+        tickInterval = setInterval(render, 1000);
+    }
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && changes.timerState) {
+        timerState = changes.timerState.newValue || null;
+        // 新しいタイマーが始まったら、前回の完了表示から作り直す
+        removeTimerUi();
+        render();
+    }
+    if (areaName === 'sync' && changes.selectedTheme) {
+        themeName = changes.selectedTheme.newValue || DEFAULT_THEME;
+        render();
     }
 });
 
 // ページ読み込み時のタイマー復元とテーマ読み込み
-try {
-    chrome.storage.sync.get(['timerState', 'selectedTheme'], function(result) {
-        if (chrome.runtime.lastError) {
-            console.log('Chrome runtime error:', chrome.runtime.lastError.message);
-            return;
-        }
-        
-        // テーマ設定を読み込み
-        if (result.selectedTheme) {
-            currentTheme = result.selectedTheme;
-        }
-        
-        if (result.timerState) {
-            // syncTimerを使用してタイマー状態を同期
-            syncTimer(result.timerState);
-            console.log('Synchronized timer state on page load');
-        }
-    });
-} catch (error) {
-    if (error.message.includes('Extension context invalidated')) {
-        console.log('Extension context invalidated during initialization');
-    }
-}
-
-console.log('Fuse content script loaded and ready');
+Promise.all([
+    chrome.storage.local.get('timerState'),
+    chrome.storage.sync.get('selectedTheme')
+]).then(([local, sync]) => {
+    timerState = local.timerState || null;
+    themeName = sync.selectedTheme || DEFAULT_THEME;
+    render();
+});
