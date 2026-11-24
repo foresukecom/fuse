@@ -46,7 +46,7 @@ const SHADOW_STYLE = `
         border-radius: 2px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
-    .fuse-line { right: 160px; }
+    .fuse-line { right: 160px; transition: right 0.1s linear; }
     .burned-line { width: 0; transition: width 0.1s linear; }
     .icon {
         display: flex;
@@ -62,18 +62,23 @@ const SHADOW_STYLE = `
         filter: drop-shadow(0 0 5px orange);
     }
     .moving-icon.hurry { animation: icon-flicker 0.2s infinite alternate; }
-    .target-icon {
+    /* 目的地アイコンとタイマー表示は右下に横並びにする。完了メッセージで表示が広がっても重ならない */
+    .end {
         position: absolute;
         bottom: 28px;
-        right: 120px;
+        right: 20px;
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+    }
+    .target-icon {
         filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
     }
     .target-icon.hurry { animation: target-shake 0.5s infinite; }
     .target-icon.complete { animation: completion 1s ease-out; }
     .display {
-        position: absolute;
-        bottom: 28px;
-        right: 20px;
+        position: relative;
+        white-space: nowrap;
         background: rgba(0,0,0,0.8);
         color: white;
         padding: 8px 12px;
@@ -207,11 +212,15 @@ function createTimerUi(theme) {
     });
     display.append(closeButton, displayText);
 
-    container.append(fuseLine, burnedLine, movingIcon, targetIcon, display);
+    const end = document.createElement('div');
+    end.className = 'end';
+    end.append(targetIcon, display);
+
+    container.append(fuseLine, burnedLine, movingIcon, end);
     shadow.append(style, container);
     (document.body || document.documentElement).appendChild(host);
 
-    return {host, container, burnedLine, movingIcon, targetIcon, displayText, theme, completed: false};
+    return {host, container, fuseLine, burnedLine, movingIcon, end, targetIcon, displayText, theme, completed: false};
 }
 
 function removeTimerUi() {
@@ -242,13 +251,20 @@ function getRemainingSeconds(state) {
     return Math.max(0, state.totalSeconds - elapsed);
 }
 
+// 導火線の右端を目的地アイコンの手前に合わせ、その位置（ページ左端からのpx）を返す
+function layoutFuseLine() {
+    const lineEnd = ui.end.getBoundingClientRect().left - 8;
+    ui.fuseLine.style.right = Math.max(0, window.innerWidth - lineEnd) + 'px';
+    return lineEnd;
+}
+
 function showProgress(remaining) {
     ui.displayText.textContent = formatTime(remaining);
 
     // 移動アイコンの位置を更新（左から右へ移動）
     const progress = 1 - (remaining / timerState.totalSeconds);
     const startPos = 5;
-    const endPos = window.innerWidth - 180;
+    const endPos = layoutFuseLine() - 20;
     const currentPos = startPos + (progress * (endPos - startPos));
     ui.movingIcon.style.left = currentPos + 'px';
 
@@ -274,6 +290,7 @@ function showComplete() {
     ui.targetIcon.replaceChildren(createIconElement(ui.theme.completeIcon, '48px'));
     ui.targetIcon.classList.add('complete');
     ui.displayText.textContent = ui.theme.completeMessage;
+    layoutFuseLine();
 }
 
 function stopTicking() {
