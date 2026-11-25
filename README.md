@@ -47,6 +47,7 @@ direnv を使う場合は、初回のみ `direnv allow` を実行すると、以
 | `just build` | 配布ファイルを `dist/extension/` にコピー |
 | `just test` | ビルドしてテストを実行 |
 | `just package` | ストア提出用の ZIP を `dist/` に作成 |
+| `just screenshots` | ストア用スクリーンショット（1280x800）を `store/` に作成 |
 | `just icons` | `images/icon-source*.svg` から拡張機能のアイコンを再生成 |
 | `just clean` | 生成物を削除 |
 

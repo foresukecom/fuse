@@ -35,6 +35,10 @@ package: build
     (cd dist/extension && zip -r -X "$zip_path" .)
     echo "dist/fuse-${version}.zip を作成しました"
 
+# store/slide.html を使って、1280x800 のストア用スクリーンショットを store/ に作成する
+screenshots: build
+    node scripts/screenshots.js
+
 # images/icon-source*.svg から icons/ の拡張機能アイコンを再生成する
 icons:
     ./scripts/generate-icons.sh

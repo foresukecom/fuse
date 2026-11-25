@@ -93,3 +93,17 @@ test('ページのコンソールにログを出さない', async ({ context, po
   await expect(timerText(page)).toHaveText('💥 時間です！', { timeout: 5000 });
   expect(logs).toEqual([]);
 });
+
+test('完了メッセージが目的地アイコンや導火線と重ならない', async ({ context, popup }) => {
+  const page = await openPage(context);
+  await popup.locator('#themeSelect').selectOption('ship');
+  await startTimer(popup, '00:00:02');
+  await expect(timerText(page)).toHaveText('🏝️ 到着しました！', { timeout: 5000 });
+  // 完了アニメーション（1秒）が終わるのを待つ
+  await page.waitForTimeout(1200);
+
+  const box = (selector) => timerHost(page).locator(selector).boundingBox();
+  const [target, display, line] = await Promise.all([box('.target-icon'), box('.display'), box('.fuse-line')]);
+  expect(target.x + target.width).toBeLessThanOrEqual(display.x);
+  expect(line.x + line.width).toBeLessThanOrEqual(target.x);
+});
